@@ -1,0 +1,31 @@
+<nav class="site-navbar">
+    <div class="navbar-inner">
+        <a href="/landing" class="navbar-brand">
+            <span class="navbar-logo"><i class="fas fa-robot"></i></span>
+            <span class="navbar-title">
+                AI Interview Assistant
+                <span>Powered by Gemini</span>
+            </span>
+        </a>
+        <div class="navbar-actions" id="nav-guest">
+            <a href="/settings" class="nav-btn glass-btn nav-link-btn" title="Settings">
+                <i class="fas fa-cog"></i>
+            </a>
+            <button type="button" class="nav-btn glass-btn" id="btn-open-login">Login</button>
+            <button type="button" class="nav-btn nav-btn-primary glass-btn" id="btn-open-signup">Sign Up</button>
+        </div>
+        <div class="navbar-actions navbar-user" id="nav-user" style="display: none;">
+            <a href="/settings" class="nav-btn glass-btn nav-link-btn" title="Settings">
+                <i class="fas fa-cog"></i>
+            </a>
+            <a href="/history" class="nav-btn glass-btn nav-link-btn">
+                <i class="fas fa-clock-rotate-left"></i> History
+            </a>
+            <span class="nav-user-pill glass-btn">
+                <i class="fas fa-user-circle"></i>
+                <span id="nav-username">User</span>
+            </span>
+            <button type="button" class="nav-btn glass-btn" id="btn-logout">Logout</button>
+        </div>
+    </div>
+</nav>

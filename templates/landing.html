@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="page-landing">
+    {% include 'partials/navbar.html' %}
+    {% include 'partials/auth_modals.html' %}
+
+    <main class="landing-main">
+        <div class="hero-glow hero-glow--left"></div>
+        <div class="hero-glow hero-glow--right"></div>
+
+        <div class="glass hero-card animate-fade-in">
+            <div class="hero-badge">
+                <i class="fas fa-sparkles"></i> AI-Powered Practice
+            </div>
+            <h1 class="hero-title">AI Interview Assistant</h1>
+            <p class="hero-subtitle">
+                Practice your interview skills with real-time feedback, emotion insights, and personalized coaching.
+            </p>
+
+            <div class="feature-cards">
+                <div class="feature-card glass-dark">
+                    <i class="fas fa-video text-purple-300"></i>
+                    <h3>Live Camera</h3>
+                    <p>Body language &amp; presence tracking</p>
+                </div>
+                <div class="feature-card glass-dark">
+                    <i class="fas fa-microphone text-purple-300"></i>
+                    <h3>Speech Analysis</h3>
+                    <p>Clarity, pace, and filler detection</p>
+                </div>
+                <div class="feature-card glass-dark">
+                    <i class="fas fa-brain text-purple-300"></i>
+                    <h3>Gemini Coaching</h3>
+                    <p>Smart questions &amp; final feedback</p>
+                </div>
+            </div>
+
+            <div class="interview-prep glass-dark">
+                <h3 class="interview-prep__title">Interview Setup</h3>
+                <div class="interview-prep__grid">
+                    <label class="interview-prep__field">
+                        <span>Interview Type</span>
+                        <select id="landingInterviewMode" class="interview-prep__select">
+                            <option value="hr">HR Interview</option>
+                            <option value="technical" selected>Technical Interview</option>
+                            <option value="java">Java Interview</option>
+                            <option value="sql">SQL Interview</option>
+                            <option value="fullstack">Full Stack Interview</option>
+                            <option value="aiml">AI/ML Interview</option>
+                            <option value="behavioral">Behavioral Interview</option>
+                        </select>
+                    </label>
+                    <label class="interview-prep__field">
+                        <span>Language</span>
+                        <select id="landingLanguage" class="interview-prep__select">
+                            <option value="en" selected>English</option>
+                            <option value="hi">Hindi</option>
+                            <option value="hinglish">Hinglish</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+
+            <div class="hero-cta">
+                <div class="start-interview-wrap">
+                    <button
+                        type="button"
+                        id="startInterviewLanding"
+                        class="btn-start-interview btn-start-interview--locked"
+                        disabled
+                    >
+                        Start Interview
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                    <p class="start-interview-tooltip" id="start-interview-tooltip">Please login first</p>
+                </div>
+                <button type="button" onclick="window.location.href='/device-setup'" class="glass-btn-secondary">
+                    Setup Devices
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/interview-settings.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

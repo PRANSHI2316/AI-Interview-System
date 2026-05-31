@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Session</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/interview.css') }}">
+</head>
+<body>
+    <div class="interview-container">
+        <div class="interview-panel">
+            <div class="text-center mb-8">
+                <h1 class="text-4xl font-bold text-white mb-2">AI Interview Assistant</h1>
+                <p class="text-white opacity-80">Professional Interview Experience</p>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Left Panel - User Video -->
+                <div class="text-center">
+                    <h3 class="text-white font-semibold mb-4">Your Video</h3>
+                    <div class="video-container">
+                        <video id="user-video" autoplay muted></video>
+                        <div class="mt-2">
+                            <div class="status-indicator" id="camera-status">📹</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Center Panel - AI Bot -->
+                <div class="text-center">
+                    <h3 class="text-white font-semibold mb-4">AI Interviewer</h3>
+                    <div class="ai-bot" id="ai-bot">
+                        🤖
+                        <div class="status-indicator" id="bot-status">💬</div>
+                    </div>
+                    <div class="interview-state" id="interview-state">Ready to start</div>
+                </div>
+                
+                <!-- Right Panel - Interview Info -->
+                <div>
+                    <h3 class="text-white font-semibold mb-4 text-center">Interview Progress</h3>
+                    <div class="bg-white bg-opacity-10 rounded-lg p-4 mb-4">
+                        <div class="flex justify-between text-white mb-2">
+                            <span>Question <span id="current-question-num">1</span> of <span id="total-questions">5</span></span>
+                            <span id="progress-percent">20%</span>
+                        </div>
+                        <div class="w-full bg-white bg-opacity-20 rounded-full h-2">
+                            <div id="progress-bar" class="bg-gradient-to-r from-blue-400 to-purple-400 h-2 rounded-full transition-all duration-500" style="width: 20%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Question Display -->
+            <div class="question-display" id="question-display">
+                <p id="current-question-text">Welcome to your AI Interview!</p>
+            </div>
+            
+            <!-- Transcript Display -->
+            <div class="transcript-display" id="transcript-display">
+                <p id="transcript-text">Your response will appear here...</p>
+            </div>
+            
+            <!-- Control Buttons -->
+            <div class="text-center mt-8">
+                <button id="start-interview-btn" class="control-button">
+                    🎙️ Start Interview
+                </button>
+                <button id="end-interview-btn" class="control-button" style="display: none;">
+                    🛑 End Interview
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/interview.js') }}"></script>
+</body>
+</html>

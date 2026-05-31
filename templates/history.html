@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview History - AI Interview Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/interview.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="page-history">
+    {% include 'partials/navbar.html' %}
+    {% include 'partials/auth_modals.html' %}
+
+    <main class="history-main">
+        <div class="history-container card glass">
+            <header class="history-header">
+                <h1><i class="fas fa-scroll"></i> Interview History</h1>
+                <p>Review past sessions, scores, and AI feedback.</p>
+            </header>
+
+            <div id="historyLoginPrompt" class="history-empty" style="display: none;">
+                <p>Please login to view your interview history.</p>
+                <button type="button" class="nav-btn nav-btn-primary glass-btn" id="btn-history-login">Login</button>
+            </div>
+
+            <div id="historyLoading" class="history-loading">
+                <span class="ai-loading__spinner"></span> Loading history…
+            </div>
+
+            <div id="historyEmpty" class="history-empty" style="display: none;">
+                <p>No interviews yet. Complete your first session to see it here.</p>
+                <a href="/device-setup" class="nav-btn nav-btn-primary glass-btn">Start Interview</a>
+            </div>
+
+            <div id="historyList" class="history-list"></div>
+
+            <div id="historyDetail" class="history-detail is-hidden">
+                <button type="button" class="history-back-btn" id="historyBackBtn">
+                    <i class="fas fa-arrow-left"></i> Back to list
+                </button>
+                <div id="historyDetailContent"></div>
+            </div>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/interview-settings.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/history.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+<div id="languageModal" class="auth-modal" aria-hidden="true" style="display: none;">
+    <div class="auth-modal__backdrop" data-close-language></div>
+    <div class="auth-modal__panel glass language-modal-panel">
+        <button type="button" class="auth-modal__close" data-close-language aria-label="Close">&times;</button>
+        <h2 class="auth-modal__title"><i class="fas fa-language"></i> Language Settings</h2>
+        <p class="auth-modal__subtitle">Choose how the AI interviewer speaks and listens.</p>
+        <div class="language-options" id="languageOptions">
+            <label class="language-option">
+                <input type="radio" name="interview_language" value="en" checked>
+                <span>English</span>
+            </label>
+            <label class="language-option">
+                <input type="radio" name="interview_language" value="hi">
+                <span>Hindi</span>
+            </label>
+            <label class="language-option">
+                <input type="radio" name="interview_language" value="hinglish">
+                <span>Hinglish</span>
+            </label>
+        </div>
+        <button type="button" class="nav-btn nav-btn-primary glass-btn" id="btn-save-language">Save Language</button>
+    </div>
+</div>

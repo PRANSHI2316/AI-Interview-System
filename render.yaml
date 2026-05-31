@@ -1,0 +1,17 @@
+# Optional: deploy the Flask backend on Render (free tier available).
+# Import this file in Render Dashboard → Blueprints, or create a Web Service manually.
+services:
+  - type: web
+    name: ai-interview-assistant-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: FLASK_SECRET_KEY
+        generateValue: true
