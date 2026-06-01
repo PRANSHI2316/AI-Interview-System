@@ -3,9 +3,9 @@ from flask_cors import CORS
 import os
 import json
 import tempfile
-import whisper
 
 from ai.ai_interviewer import AIInterviewer
+from ai.whisper_service import transcribe_file, is_whisper_loaded
 from ai.feedback_generator import FeedbackGenerator
 from ai.tts_service import synthesize_speech, is_tts_available, get_voice_name
 from auth_routes import auth_bp
@@ -61,10 +61,8 @@ def load_local_env():
 
 load_local_env()
 
-print("Loading Whisper model...")
-whisper_model = whisper.load_model("base")
-print("Model loaded successfully!")
-
+# Whisper loads lazily on first /transcribe request (singleton in whisper_service).
+# Gemini services are lightweight API clients — safe to initialize at startup.
 ai_interviewer = AIInterviewer()
 feedback_generator = FeedbackGenerator()
 init_db()
@@ -231,6 +229,17 @@ def api_tts_speak():
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
+@app.route("/health", methods=["GET"])
+def health():
+    """Lightweight health check for Railway (does not load Whisper)."""
+    return jsonify(
+        {
+            "status": "ok",
+            "whisper_loaded": is_whisper_loaded(),
+        }
+    )
+
+
 @app.route("/api/tts/status", methods=["GET"])
 def api_tts_status():
     return jsonify(
@@ -248,6 +257,7 @@ def api_tts_status():
 
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
+    temp_path = None
     try:
         if "audio" not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
@@ -257,182 +267,210 @@ def transcribe():
             temp_path = tmp.name
             audio.save(temp_path)
 
-        result = whisper_model.transcribe(temp_path)
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        result = transcribe_file(temp_path)
+        if not result.get("ok"):
+            status_code = 503 if "overloaded" in (result.get("error") or "").lower() else 500
+            return jsonify(
+                {"status": "error", "message": result.get("error", "Transcription failed")}
+            ), status_code
 
-        return jsonify({"status": "success", "text": result.get("text", "").strip()})
+        return jsonify({"status": "success", "text": result.get("text", "")})
     except Exception as exc:
+        print(f"[transcribe] error: {exc}")
         return jsonify({"status": "error", "message": str(exc)}), 500
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
 @app.route("/api/interview/start", methods=["POST"])
 def api_interview_start():
-    payload = request.get_json(silent=True) or {}
-    profile = _enrich_profile(payload.get("profile", {}))
-    start_payload = ai_interviewer.start_interview(profile)
-    user_id = session.get("user_id")
-    session_id = create_session(profile, user_id=user_id)
-    return jsonify(
-        {
-            "success": True,
-            "session_id": session_id,
-            "question": start_payload.get("opening_question"),
-            "greeting": start_payload.get("greeting"),
-            "interviewer_message": start_payload.get("interviewer_message"),
-        }
-    )
+    try:
+        payload = request.get_json(silent=True) or {}
+        profile = _enrich_profile(payload.get("profile", {}))
+        start_payload = ai_interviewer.start_interview(profile)
+        user_id = session.get("user_id")
+        session_id = create_session(profile, user_id=user_id)
+        return jsonify(
+            {
+                "success": True,
+                "session_id": session_id,
+                "question": start_payload.get("opening_question"),
+                "greeting": start_payload.get("greeting"),
+                "interviewer_message": start_payload.get("interviewer_message"),
+            }
+        )
+    except Exception as exc:
+        print(f"[interview/start] error: {exc}")
+        return jsonify(
+            {"success": False, "error": "Could not start interview. Please try again."}
+        ), 503
 
 
 @app.route("/api/interview/turn", methods=["POST"])
 def api_interview_turn():
-    payload = request.get_json(silent=True) or {}
-    session_id = payload.get("session_id")
-    question = payload.get("question", "")
-    answer = payload.get("answer", "")
-    speech_metrics = payload.get("speech_metrics", {})
-    emotion_metrics = normalize_emotion_metrics(payload.get("emotion_metrics", {}))
+    try:
+        payload = request.get_json(silent=True) or {}
+        session_id = payload.get("session_id")
+        question = payload.get("question", "")
+        answer = payload.get("answer", "")
+        speech_metrics = payload.get("speech_metrics", {})
+        emotion_metrics = normalize_emotion_metrics(payload.get("emotion_metrics", {}))
 
-    if not session_id or not answer.strip():
-        return jsonify({"success": False, "error": "session_id and answer are required"}), 400
+        if not session_id or not answer.strip():
+            return jsonify({"success": False, "error": "session_id and answer are required"}), 400
 
-    prior_turns = get_turns(session_id)
-    analysis = ai_interviewer.process_turn(
-        session_id, question, answer, speech_metrics, emotion_metrics, prior_turns=prior_turns
-    )
+        prior_turns = get_turns(session_id)
+        analysis = ai_interviewer.process_turn(
+            session_id, question, answer, speech_metrics, emotion_metrics, prior_turns=prior_turns
+        )
 
-    updated_profile = ai_interviewer.merge_conversation_state(
-        get_session_profile(session_id) or {},
-        answer,
-        turns=prior_turns,
-        asked_question=question,
-        next_question=analysis.get("next_question"),
-    )
-    update_session_profile(session_id, updated_profile)
+        updated_profile = ai_interviewer.merge_conversation_state(
+            get_session_profile(session_id) or {},
+            answer,
+            turns=prior_turns,
+            asked_question=question,
+            next_question=analysis.get("next_question"),
+        )
+        update_session_profile(session_id, updated_profile)
 
-    coaching = analysis.get("coaching_line", "Good effort. Continue with confidence.")
-    support_message = analysis.get("support_message", "")
-    if support_message:
-        coaching = f"{support_message} {coaching}".strip()
-    elif analysis.get("nervousness_detected"):
-        coaching = f"It's okay, take your time. {coaching}"
+        coaching = analysis.get("coaching_line", "Good effort. Continue with confidence.")
+        support_message = analysis.get("support_message", "")
+        if support_message:
+            coaching = f"{support_message} {coaching}".strip()
+        elif analysis.get("nervousness_detected"):
+            coaching = f"It's okay, take your time. {coaching}"
 
-    turn_number = len(prior_turns) + 1
-    save_qa_pair(session_id, turn_number, question, answer, speech_metrics, emotion_metrics)
-    save_turn(
-        session_id,
-        {
-            "question": question,
-            "answer": answer,
-            "coaching_line": coaching,
-            "communication_score": analysis.get("communication_score", 70),
-            "technical_score": analysis.get("technical_score", 70),
-            "confidence_score": analysis.get("confidence_score", 70),
-            "emotional_stability_score": analysis.get("emotional_stability_score", emotion_metrics.get("emotional_stability_score", 70)),
-            "filler_word_count": speech_metrics.get("filler_count", 0),
-            "pause_count": speech_metrics.get("pause_count", 0),
-            "speaking_speed_wpm": speech_metrics.get("wpm", 0),
-            "eye_contact_score": emotion_metrics.get("eye_contact_score", 70),
-            "nervousness": analysis.get("nervousness_detected", emotion_metrics.get("nervousness", False)),
-            "emotion": emotion_metrics,
-            "speech": speech_metrics,
-        },
-    )
-
-    return jsonify(
-        {
-            "success": True,
-            "analysis": analysis,
-            "coaching_line": coaching,
-            "support_message": support_message,
-            "next_question": analysis.get("next_question", "Can you share a practical example from your work?"),
-            "interviewer_message": analysis.get("interviewer_message"),
-            "memory": {
-                "discussed_topics": updated_profile.get("discussed_topics", []),
-                "skills_mentioned": updated_profile.get("skills_mentioned", []),
-                "asked_questions": updated_profile.get("asked_questions", []),
-                "projects_mentioned": updated_profile.get("projects_mentioned", []),
+        turn_number = len(prior_turns) + 1
+        save_qa_pair(session_id, turn_number, question, answer, speech_metrics, emotion_metrics)
+        save_turn(
+            session_id,
+            {
+                "question": question,
+                "answer": answer,
+                "coaching_line": coaching,
+                "communication_score": analysis.get("communication_score", 70),
+                "technical_score": analysis.get("technical_score", 70),
+                "confidence_score": analysis.get("confidence_score", 70),
+                "emotional_stability_score": analysis.get("emotional_stability_score", emotion_metrics.get("emotional_stability_score", 70)),
+                "filler_word_count": speech_metrics.get("filler_count", 0),
+                "pause_count": speech_metrics.get("pause_count", 0),
+                "speaking_speed_wpm": speech_metrics.get("wpm", 0),
+                "eye_contact_score": emotion_metrics.get("eye_contact_score", 70),
+                "nervousness": analysis.get("nervousness_detected", emotion_metrics.get("nervousness", False)),
+                "emotion": emotion_metrics,
+                "speech": speech_metrics,
             },
-        }
-    )
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "analysis": analysis,
+                "coaching_line": coaching,
+                "support_message": support_message,
+                "next_question": analysis.get("next_question", "Can you share a practical example from your work?"),
+                "interviewer_message": analysis.get("interviewer_message"),
+                "memory": {
+                    "discussed_topics": updated_profile.get("discussed_topics", []),
+                    "skills_mentioned": updated_profile.get("skills_mentioned", []),
+                    "asked_questions": updated_profile.get("asked_questions", []),
+                    "projects_mentioned": updated_profile.get("projects_mentioned", []),
+                },
+            }
+        )
+    except Exception as exc:
+        print(f"[interview/turn] error: {exc}")
+        return jsonify(
+            {"success": False, "error": "Interview processing failed. Please try again."}
+        ), 503
 
 
 @app.route("/api/interview/finalize", methods=["POST"])
 def api_interview_finalize():
-    payload = request.get_json(silent=True) or {}
-    session_id = payload.get("session_id")
-    if not session_id:
-        return jsonify({"success": False, "error": "session_id is required"}), 400
+    try:
+        payload = request.get_json(silent=True) or {}
+        session_id = payload.get("session_id")
+        if not session_id:
+            return jsonify({"success": False, "error": "session_id is required"}), 400
 
-    turns = get_turns(session_id)
+        turns = get_turns(session_id)
 
-    def avg(key):
-        if not turns:
-            return 0
-        vals = [float(t.get(key, 0) or 0) for t in turns]
-        return round(sum(vals) / max(1, len(vals)), 2)
+        def avg(key):
+            if not turns:
+                return 0
+            vals = [float(t.get(key, 0) or 0) for t in turns]
+            return round(sum(vals) / max(1, len(vals)), 2)
 
-    def avg_speech(key):
-        if not turns:
-            return 0
-        vals = []
-        for t in turns:
-            raw = t.get("speech_json")
-            try:
-                speech = json.loads(raw) if isinstance(raw, str) else (raw or {})
-            except Exception:
-                speech = {}
-            if key in speech:
-                vals.append(float(speech.get(key, 0) or 0))
-        return round(sum(vals) / max(1, len(vals)), 2) if vals else 0
+        def avg_speech(key):
+            if not turns:
+                return 0
+            vals = []
+            for t in turns:
+                raw = t.get("speech_json")
+                try:
+                    speech = json.loads(raw) if isinstance(raw, str) else (raw or {})
+                except Exception:
+                    speech = {}
+                if key in speech:
+                    vals.append(float(speech.get(key, 0) or 0))
+            return round(sum(vals) / max(1, len(vals)), 2) if vals else 0
 
-    nervous_count = sum(1 for t in turns if int(t.get("nervousness", 0) or 0))
-    nervousness_score = round((nervous_count / max(1, len(turns))) * 100, 2) if turns else 0
+        nervous_count = sum(1 for t in turns if int(t.get("nervousness", 0) or 0))
+        nervousness_score = round((nervous_count / max(1, len(turns))) * 100, 2) if turns else 0
 
-    summary_seed = {
-        "questions_asked": len(turns),
-        "communication_score": avg("communication_score"),
-        "technical_score": avg("technical_score"),
-        "confidence_score": avg("confidence_score"),
-        "emotional_stability_score": avg("emotional_stability_score"),
-        "eye_contact_score": avg("eye_contact_score"),
-        "fluency_score": avg_speech("clarity_score"),
-        "clarity_score": avg_speech("clarity_score"),
-        "grammar_score": max(0, 100 - avg_speech("filler_count") * 8) if turns else 0,
-        "introduction_quality_score": avg("communication_score"),
-        "vocabulary_score": avg("technical_score"),
-        "nervousness_score": nervousness_score,
-        "filler_word_count": int(sum(int(t.get("filler_word_count", 0) or 0) for t in turns)),
-        "pause_count": int(sum(int(t.get("pause_count", 0) or 0) for t in turns)),
-    }
+        summary_seed = {
+            "questions_asked": len(turns),
+            "communication_score": avg("communication_score"),
+            "technical_score": avg("technical_score"),
+            "confidence_score": avg("confidence_score"),
+            "emotional_stability_score": avg("emotional_stability_score"),
+            "eye_contact_score": avg("eye_contact_score"),
+            "fluency_score": avg_speech("clarity_score"),
+            "clarity_score": avg_speech("clarity_score"),
+            "grammar_score": max(0, 100 - avg_speech("filler_count") * 8) if turns else 0,
+            "introduction_quality_score": avg("communication_score"),
+            "vocabulary_score": avg("technical_score"),
+            "nervousness_score": nervousness_score,
+            "filler_word_count": int(sum(int(t.get("filler_word_count", 0) or 0) for t in turns)),
+            "pause_count": int(sum(int(t.get("pause_count", 0) or 0) for t in turns)),
+        }
 
-    profile = _enrich_profile(get_session_profile(session_id))
-    final_feedback = feedback_generator.generate_full_report(profile, turns, summary_seed)
-    final_summary = {**summary_seed, **final_feedback}
-    final_summary["turns"] = turns
-    final_summary["session_id"] = session_id
-    final_summary["username"] = profile.get("username") or profile.get("name")
+        profile = _enrich_profile(get_session_profile(session_id))
+        final_feedback = feedback_generator.generate_full_report(profile, turns, summary_seed)
+        final_summary = {**summary_seed, **final_feedback}
+        final_summary["turns"] = turns
+        final_summary["session_id"] = session_id
+        final_summary["username"] = profile.get("username") or profile.get("name")
 
-    save_summary(session_id, final_summary)
-    save_interview_feedback(session_id, final_summary)
-    close_session(session_id)
+        save_summary(session_id, final_summary)
+        save_interview_feedback(session_id, final_summary)
+        close_session(session_id)
 
-    user_id = session.get("user_id")
-    if user_id:
-        update_interview_user(session_id, user_id)
-        overall = float(
-            final_summary.get("overall_score")
-            or (
-                float(final_summary.get("communication_score", 0))
-                + float(final_summary.get("technical_score", 0))
-                + float(final_summary.get("confidence_score", 0))
+        user_id = session.get("user_id")
+        if user_id:
+            update_interview_user(session_id, user_id)
+            overall = float(
+                final_summary.get("overall_score")
+                or (
+                    float(final_summary.get("communication_score", 0))
+                    + float(final_summary.get("technical_score", 0))
+                    + float(final_summary.get("confidence_score", 0))
+                )
+                / 3.0
             )
-            / 3.0
-        )
-        feedback_text = final_summary.get("feedback_text") or ""
-        save_user_interview_session(user_id, session_id, round(overall, 2), str(feedback_text))
+            feedback_text = final_summary.get("feedback_text") or ""
+            save_user_interview_session(user_id, session_id, round(overall, 2), str(feedback_text))
 
-    return jsonify({"success": True, "summary": final_summary})
+        return jsonify({"success": True, "summary": final_summary})
+    except Exception as exc:
+        print(f"[interview/finalize] error: {exc}")
+        return jsonify(
+            {"success": False, "error": "Could not generate feedback. Please try again."}
+        ), 503
 
 
 @app.route("/api/interview/<session_id>/summary", methods=["GET"])

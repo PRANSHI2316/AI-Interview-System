@@ -1,4 +1,9 @@
 flask
 flask-cors
-openai-whisper
+gunicorn
 edge-tts
+
+# CPU-only PyTorch (smaller footprint on Railway; Whisper does not need CUDA)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+openai-whisper
