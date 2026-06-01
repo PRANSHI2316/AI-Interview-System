@@ -27,6 +27,7 @@ const MediaDebugger = ({ setCurrentScreen }) => {
     
     // Enumerate devices
     enumerateDevices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addLog = (message, data = null) => {

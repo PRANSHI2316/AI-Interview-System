@@ -8,16 +8,20 @@ const DeviceSetup = ({ onSetupComplete }) => {
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [micEnabled, setMicEnabled] = useState(false);
   const [stream, setStream] = useState(null);
-  const [isTesting, setIsTesting] = useState(false);
   const [error, setError] = useState('');
   
   const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  useEffect(() => {
+    streamRef.current = stream;
+  }, [stream]);
 
   useEffect(() => {
     checkDevices();
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);

@@ -19,7 +19,7 @@ const FeedbackPage = ({ feedback, onRestart }) => {
     );
   }
 
-  const { confidence, clarity, fluency, questions, transcripts } = feedback;
+  const { confidence, clarity, fluency } = feedback;
   
   const overallScore = Math.round((confidence + clarity + fluency) / 3);
   

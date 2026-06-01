@@ -36,6 +36,7 @@ const InterviewScreen = ({ onEnd }) => {
     "Tell me about a time you worked in a team."
   ];
 
+  // Mount-only: start camera and initial AI prompts (do not re-run on question index changes)
   useEffect(() => {
     startCamera();
     // Start with AI greeting
@@ -52,6 +53,7 @@ const InterviewScreen = ({ onEnd }) => {
       stopCamera();
       if (timerRef.current) clearInterval(timerRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -240,10 +242,6 @@ const InterviewScreen = ({ onEnd }) => {
 
   const analyzeFacialExpression = () => {
     if (!videoRef.current || !canvasRef.current) return;
-    
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
     
     // Simple simulation of facial expression analysis
     // In a real implementation, you would use face-api.js or similar library
