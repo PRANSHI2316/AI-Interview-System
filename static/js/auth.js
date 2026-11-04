@@ -8,10 +8,14 @@ window.AuthApp = (function () {
         navUsername: document.getElementById("nav-username"),
         loginModal: document.getElementById("login-modal"),
         signupModal: document.getElementById("signup-modal"),
+        forgotPasswordModal: document.getElementById("forgot-password-modal"),
         loginForm: document.getElementById("login-form"),
         signupForm: document.getElementById("signup-form"),
+        forgotPasswordForm: document.getElementById("forgot-password-form"),
         loginError: document.getElementById("login-error"),
         signupError: document.getElementById("signup-error"),
+        forgotPasswordError: document.getElementById("forgot-password-error"),
+        forgotPasswordSuccess: document.getElementById("forgot-password-success"),
     });
 
     function isLoggedIn() {
@@ -34,6 +38,7 @@ window.AuthApp = (function () {
         const e = els();
         closeModal(e.loginModal);
         closeModal(e.signupModal);
+        closeModal(e.forgotPasswordModal);
     }
 
     function updateNavbar() {
@@ -129,6 +134,45 @@ window.AuthApp = (function () {
         }
     }
 
+    async function handleForgotPassword(event) {
+        event.preventDefault();
+        const e = els();
+        const form = event.target;
+        const email = form.email?.value?.trim();
+
+        if (e.forgotPasswordError) e.forgotPasswordError.textContent = "";
+        if (e.forgotPasswordSuccess) e.forgotPasswordSuccess.textContent = "";
+
+        try {
+            const res = await fetch("/forgot-password", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "same-origin",
+                body: JSON.stringify({ email }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                if (e.forgotPasswordError) e.forgotPasswordError.textContent = data.error || "Request failed.";
+                return;
+            }
+            
+            // Check if email was configured or if token is provided for testing
+            if (data.token) {
+                // Email not configured, show testing link
+                if (e.forgotPasswordSuccess) {
+                    e.forgotPasswordSuccess.innerHTML = data.message + `<br><a href="/reset-password?token=${data.token}" class="text-blue-400 hover:underline">Click here to reset password</a>`;
+                }
+            } else {
+                // Email configured, show success message
+                if (e.forgotPasswordSuccess) e.forgotPasswordSuccess.textContent = data.message || "Reset link sent successfully.";
+            }
+            
+            form.reset();
+        } catch {
+            if (e.forgotPasswordError) e.forgotPasswordError.textContent = "Network error. Please try again.";
+        }
+    }
+
     async function logout() {
         try {
             await fetch("/logout", { method: "POST", credentials: "same-origin" });
@@ -175,9 +219,20 @@ window.AuthApp = (function () {
             closeAllModals();
             openModal(els().loginModal);
         });
+        document.getElementById("link-to-forgot-password")?.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            closeAllModals();
+            openModal(els().forgotPasswordModal);
+        });
+        document.getElementById("link-to-login-from-forgot")?.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            closeAllModals();
+            openModal(els().loginModal);
+        });
 
         els().loginForm?.addEventListener("submit", handleLogin);
         els().signupForm?.addEventListener("submit", handleSignup);
+        els().forgotPasswordForm?.addEventListener("submit", handleForgotPassword);
     }
 
     async function init() {

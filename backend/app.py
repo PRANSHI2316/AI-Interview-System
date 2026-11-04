@@ -7,6 +7,8 @@ import tempfile
 from ai.ai_interviewer import AIInterviewer
 from ai.whisper_service import transcribe_file, is_whisper_loaded
 from ai.feedback_generator import FeedbackGenerator
+from ai.gemini_service import GeminiAnalysisError, GeminiInterviewService
+from ai.scoring_validation import error_payload, validate_transcript, validate_turns_exist
 from ai.tts_service import synthesize_speech, is_tts_available, get_voice_name
 from auth_routes import auth_bp
 from database.auth_db import (
@@ -65,8 +67,17 @@ load_local_env()
 # Gemini services are lightweight API clients — safe to initialize at startup.
 ai_interviewer = AIInterviewer()
 feedback_generator = FeedbackGenerator()
+gemini_service = GeminiInterviewService()
 init_db()
 init_auth_db()
+
+if gemini_service.is_configured():
+    if gemini_service.test_connectivity():
+        print("[Gemini] API connectivity OK")
+    else:
+        print("[Gemini] WARNING: API connectivity test failed — analysis will be unavailable")
+else:
+    print("[Gemini] WARNING: GEMINI_API_KEY not configured")
 
 
 def _enrich_profile(profile: dict) -> dict:
@@ -145,6 +156,11 @@ def history_page():
 @app.route("/settings")
 def settings_page():
     return render_template("settings.html")
+
+
+@app.route("/reset-password")
+def reset_password_page():
+    return render_template("reset_password.html")
 
 
 @app.route("/api/user/language-preference", methods=["GET", "POST"])
@@ -297,17 +313,21 @@ def api_interview_start():
         return jsonify(
             {
                 "success": True,
+                "analysis_available": True,
                 "session_id": session_id,
                 "question": start_payload.get("opening_question"),
                 "greeting": start_payload.get("greeting"),
                 "interviewer_message": start_payload.get("interviewer_message"),
             }
         )
+    except GeminiAnalysisError as exc:
+        print(f"[interview/start] Gemini error: {exc.message}")
+        if exc.detail:
+            print(f"[interview/start] detail: {exc.detail}")
+        return jsonify({**error_payload(exc.message, exc.detail)}), 503
     except Exception as exc:
         print(f"[interview/start] error: {exc}")
-        return jsonify(
-            {"success": False, "error": "Could not start interview. Please try again."}
-        ), 503
+        return jsonify({**error_payload("Could not start interview. Please try again.", str(exc))}), 503
 
 
 @app.route("/api/interview/turn", methods=["POST"])
@@ -320,8 +340,13 @@ def api_interview_turn():
         speech_metrics = payload.get("speech_metrics", {})
         emotion_metrics = normalize_emotion_metrics(payload.get("emotion_metrics", {}))
 
-        if not session_id or not answer.strip():
-            return jsonify({"success": False, "error": "session_id and answer are required"}), 400
+        if not session_id:
+            return jsonify({**error_payload("session_id is required")}), 400
+
+        transcript_error = validate_transcript(answer)
+        if transcript_error:
+            print(f"[interview/turn] empty transcript session={session_id}")
+            return jsonify(transcript_error), 400
 
         prior_turns = get_turns(session_id)
         analysis = ai_interviewer.process_turn(
@@ -337,12 +362,12 @@ def api_interview_turn():
         )
         update_session_profile(session_id, updated_profile)
 
-        coaching = analysis.get("coaching_line", "Good effort. Continue with confidence.")
+        coaching = analysis.get("coaching_line", "")
         support_message = analysis.get("support_message", "")
         if support_message:
             coaching = f"{support_message} {coaching}".strip()
         elif analysis.get("nervousness_detected"):
-            coaching = f"It's okay, take your time. {coaching}"
+            coaching = f"It's okay, take your time. {coaching}".strip()
 
         turn_number = len(prior_turns) + 1
         save_qa_pair(session_id, turn_number, question, answer, speech_metrics, emotion_metrics)
@@ -352,14 +377,14 @@ def api_interview_turn():
                 "question": question,
                 "answer": answer,
                 "coaching_line": coaching,
-                "communication_score": analysis.get("communication_score", 70),
-                "technical_score": analysis.get("technical_score", 70),
-                "confidence_score": analysis.get("confidence_score", 70),
-                "emotional_stability_score": analysis.get("emotional_stability_score", emotion_metrics.get("emotional_stability_score", 70)),
+                "communication_score": analysis["communication_score"],
+                "technical_score": analysis["technical_score"],
+                "confidence_score": analysis["confidence_score"],
+                "emotional_stability_score": analysis["emotional_stability_score"],
                 "filler_word_count": speech_metrics.get("filler_count", 0),
                 "pause_count": speech_metrics.get("pause_count", 0),
                 "speaking_speed_wpm": speech_metrics.get("wpm", 0),
-                "eye_contact_score": emotion_metrics.get("eye_contact_score", 70),
+                "eye_contact_score": emotion_metrics.get("eye_contact_score", 0),
                 "nervousness": analysis.get("nervousness_detected", emotion_metrics.get("nervousness", False)),
                 "emotion": emotion_metrics,
                 "speech": speech_metrics,
@@ -369,11 +394,18 @@ def api_interview_turn():
         return jsonify(
             {
                 "success": True,
+                "analysis_available": True,
                 "analysis": analysis,
                 "coaching_line": coaching,
                 "support_message": support_message,
-                "next_question": analysis.get("next_question", "Can you share a practical example from your work?"),
+                "next_question": analysis.get("next_question"),
                 "interviewer_message": analysis.get("interviewer_message"),
+                "scores": {
+                    "communication_score": analysis["communication_score"],
+                    "technical_score": analysis["technical_score"],
+                    "confidence_score": analysis["confidence_score"],
+                    "emotional_stability_score": analysis["emotional_stability_score"],
+                },
                 "memory": {
                     "discussed_topics": updated_profile.get("discussed_topics", []),
                     "skills_mentioned": updated_profile.get("skills_mentioned", []),
@@ -382,11 +414,14 @@ def api_interview_turn():
                 },
             }
         )
+    except GeminiAnalysisError as exc:
+        print(f"[interview/turn] Gemini error: {exc.message}")
+        if exc.detail:
+            print(f"[interview/turn] detail: {exc.detail}")
+        return jsonify({**error_payload(exc.message, exc.detail)}), 503
     except Exception as exc:
         print(f"[interview/turn] error: {exc}")
-        return jsonify(
-            {"success": False, "error": "Interview processing failed. Please try again."}
-        ), 503
+        return jsonify({**error_payload("Interview processing failed. Please try again.", str(exc))}), 503
 
 
 @app.route("/api/interview/finalize", methods=["POST"])
@@ -395,9 +430,15 @@ def api_interview_finalize():
         payload = request.get_json(silent=True) or {}
         session_id = payload.get("session_id")
         if not session_id:
-            return jsonify({"success": False, "error": "session_id is required"}), 400
+            return jsonify({**error_payload("session_id is required")}), 400
 
         turns = get_turns(session_id)
+        missing = validate_turns_exist(turns)
+        if missing:
+            print(f"[interview/finalize] no data session={session_id}")
+            return jsonify(missing), 400
+
+        print(f"[interview/finalize] turns={len(turns)} session={session_id}")
 
         def avg(key):
             if not turns:
@@ -465,20 +506,31 @@ def api_interview_finalize():
             feedback_text = final_summary.get("feedback_text") or ""
             save_user_interview_session(user_id, session_id, round(overall, 2), str(feedback_text))
 
-        return jsonify({"success": True, "summary": final_summary})
+        return jsonify(
+            {
+                "success": True,
+                "analysis_available": True,
+                "summary": final_summary,
+            }
+        )
+    except GeminiAnalysisError as exc:
+        print(f"[interview/finalize] Gemini error: {exc.message}")
+        if exc.detail:
+            print(f"[interview/finalize] detail: {exc.detail}")
+        return jsonify({**error_payload(exc.message, exc.detail)}), 503
     except Exception as exc:
         print(f"[interview/finalize] error: {exc}")
-        return jsonify(
-            {"success": False, "error": "Could not generate feedback. Please try again."}
-        ), 503
+        return jsonify({**error_payload("Could not generate feedback. Please try again.", str(exc))}), 503
 
 
 @app.route("/api/interview/<session_id>/summary", methods=["GET"])
 def api_interview_summary(session_id):
     summary = get_summary(session_id)
     if not summary:
-        return jsonify({"success": False, "error": "Summary not found"}), 404
-    return jsonify({"success": True, "summary": summary})
+        return jsonify({**error_payload("No interview data available")}), 404
+    if summary.get("analysis_available") is False:
+        return jsonify({**error_payload("AI analysis unavailable")}), 503
+    return jsonify({"success": True, "analysis_available": True, "summary": summary})
 
 
 if __name__ == "__main__":

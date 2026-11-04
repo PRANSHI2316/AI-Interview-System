@@ -123,3 +123,20 @@ def save_language_preference(user_id: int, language: str):
     )
     conn.commit()
     conn.close()
+
+
+def update_user_password(user_id: int, new_password_hash: str) -> bool:
+    """Update user password"""
+    conn = get_auth_conn()
+    try:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (new_password_hash, user_id)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error updating password: {e}")
+        conn.close()
+        return False

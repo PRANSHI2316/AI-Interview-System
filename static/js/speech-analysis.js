@@ -47,10 +47,14 @@ window.SpeechAnalysis = (function () {
 
         const words = clean.trim() ? clean.trim().split(/\s+/).length : 0;
         const elapsedSeconds = Math.max(1, Math.round((Date.now() - (startedAtMs || Date.now())) / 1000));
-        const wpm = Math.round((words * 60) / elapsedSeconds);
+        const wpm = words ? Math.round((words * 60) / elapsedSeconds) : 0;
         const pauseCount = (raw.match(/,|\.{3}|\.\s/g) || []).length;
-        const clarityScore = Math.max(20, Math.min(100, 100 - fillerCount * 8 - Math.max(0, 130 - wpm) * 0.12));
-        const confidenceScore = Math.max(20, Math.min(100, 100 - fillerCount * 9 - pauseCount * 4));
+        const clarityScore = words
+            ? Math.max(0, Math.min(100, 100 - fillerCount * 8 - Math.max(0, 130 - wpm) * 0.12))
+            : 0;
+        const confidenceScore = words
+            ? Math.max(0, Math.min(100, 100 - fillerCount * 9 - pauseCount * 4))
+            : 0;
 
         const metrics = {
             filler_count: fillerCount,

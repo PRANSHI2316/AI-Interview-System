@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Interview System Flask & Whisper Service
+After=network.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/AI-Interview-System/backend
+Environment="PATH=/home/ubuntu/AI-Interview-System/backend/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/home/ubuntu/AI-Interview-System/backend/.env
+ExecStart=/home/ubuntu/AI-Interview-System/backend/venv/bin/gunicorn app:app --bind 127.0.0.1:5000 --workers 1 --threads 2 --timeout 180 --graceful-timeout 30
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

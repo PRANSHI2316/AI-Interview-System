@@ -42,12 +42,31 @@
                     <h3 class="text-white font-semibold mb-4 text-center">Interview Progress</h3>
                     <div class="bg-white bg-opacity-10 rounded-lg p-4 mb-4">
                         <div class="flex justify-between text-white mb-2">
-                            <span>Question <span id="current-question-num">1</span> of <span id="total-questions">5</span></span>
-                            <span id="progress-percent">20%</span>
+                            <span>Question <span id="current-question-num">1</span> of <span id="total-questions">4</span></span>
+                            <span id="progress-percent">25%</span>
                         </div>
                         <div class="w-full bg-white bg-opacity-20 rounded-full h-2">
-                            <div id="progress-bar" class="bg-gradient-to-r from-blue-400 to-purple-400 h-2 rounded-full transition-all duration-500" style="width: 20%"></div>
+                            <div id="progress-bar" class="bg-gradient-to-r from-blue-400 to-purple-400 h-2 rounded-full transition-all duration-500" style="width: 25%"></div>
                         </div>
+                    </div>
+                    
+                    <div class="bg-white bg-opacity-10 rounded-lg p-4 mb-4">
+                        <h4 class="text-white font-semibold mb-2">Current Question</h4>
+                        <p id="current-question-text" class="text-white text-sm">Ready to start</p>
+                    </div>
+                    
+                    <div class="bg-white bg-opacity-10 rounded-lg p-4 mb-4">
+                        <h4 class="text-white font-semibold mb-2">Transcript</h4>
+                        <p id="transcript-text" class="text-white text-sm">Waiting for speech...</p>
+                    </div>
+                    
+                    <div class="flex gap-4 justify-center">
+                        <button id="start-interview-btn" class="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold py-3 px-6 rounded-lg transition-all">
+                            Start Interview
+                        </button>
+                        <button id="end-interview-btn" class="bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold py-3 px-6 rounded-lg transition-all" style="display: none;">
+                            End Interview
+                        </button>
                     </div>
                 </div>
             </div>

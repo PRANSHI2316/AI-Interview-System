@@ -451,7 +451,11 @@ window.AIService = (function () {
                 body: JSON.stringify({ profile }),
             });
             const data = await res.json();
-            if (!data.success) throw new Error(data.error || "Failed to start interview");
+            if (!data.success) {
+                const err = new Error(data.message || data.error || "Failed to start interview");
+                console.error("[AIService] start rejected:", data);
+                throw err;
+            }
 
             state.sessionId = data.session_id;
             state.turnCount = 0;
@@ -481,7 +485,11 @@ window.AIService = (function () {
                 }),
             });
             const data = await res.json();
-            if (!data.success) throw new Error(data.error || "Turn failed");
+            if (!data.success) {
+                const err = new Error(data.message || data.error || "Turn failed");
+                console.error("[AIService] turn rejected:", data);
+                throw err;
+            }
 
             state.turnCount += 1;
             state.currentQuestion = data.next_question || state.currentQuestion;
@@ -505,7 +513,14 @@ window.AIService = (function () {
         });
         const data = await res.json();
         setLoading(false);
-        if (!data.success) throw new Error(data.error || "Finalize failed");
+        if (!data.success) {
+            console.error("[AIService] finalize rejected:", data);
+            throw new Error(data.message || data.error || "Finalize failed");
+        }
+        if (!data.analysis_available) {
+            throw new Error(data.message || "AI analysis unavailable");
+        }
+        console.log("[AIService] finalize scores from Gemini overall=", data.summary?.overall_score);
         return data;
     }
 

@@ -2,7 +2,8 @@ import json
 import re
 from typing import List, Optional
 
-from ai.gemini_service import GeminiInterviewService
+from ai.gemini_service import GeminiAnalysisError, GeminiInterviewService
+from ai.scoring_validation import TURN_SCORE_KEYS, extract_valid_scores, validate_transcript
 from database.db import get_session_profile
 
 
@@ -367,32 +368,11 @@ Critical rules:
         return self.merge_conversation_state(profile, answer)
 
     def start_interview(self, profile: dict) -> dict:
-        name = profile.get("name") or profile.get("username") or "Candidate"
-        lang = profile.get("language", "en")
-        mode_label = profile.get("interview_mode_label", "Technical Interview")
-        mode = profile.get("interview_mode", "technical")
+        if not self.gemini.is_configured():
+            raise GeminiAnalysisError("AI analysis unavailable", "GEMINI_API_KEY not configured")
 
-        if lang == "hi":
-            fallback_greeting = f"Namaste {name}, main aaj aapka AI interviewer hoon."
-            fallback_q = "Sabse pehle apna introduction dijiye aur apne skills ke baare mein batayein."
-        elif lang == "hinglish":
-            fallback_greeting = f"Hello {name}, main aaj aapka interviewer hoon."
-            fallback_q = "Pehle apna introduction dijiye — tell me about yourself and your recent projects."
-        else:
-            fallback_greeting = f"Hello {name}, welcome. I am your interviewer today for this {mode_label}."
-            if mode == "java":
-                fallback_q = "Tell me about your Java experience and any projects you have built."
-            elif mode == "sql":
-                fallback_q = "Tell me about your SQL and database experience."
-            else:
-                fallback_q = "Tell me about yourself and the skills you are strongest in."
-
-        fallback = {
-            "greeting": fallback_greeting,
-            "opening_question": fallback_q,
-            "interviewer_message": "",
-        }
-        fallback["interviewer_message"] = f"{fallback['greeting']} {fallback['opening_question']}"
+        if not self.gemini.test_connectivity():
+            raise GeminiAnalysisError("AI analysis unavailable", "Gemini connectivity test failed")
 
         prompt = f"""
 {self._system_prompt(profile)}
@@ -407,20 +387,25 @@ Return strict JSON:
   "interviewer_message": "greeting + opening question as one flowing spoken paragraph"
 }}
 """
-        try:
-            parsed = self.gemini._extract_json(
-                self.gemini._call_gemini(prompt, max_output_tokens=900),
-                fallback,
-            )
-            if not parsed.get("interviewer_message"):
-                parsed["interviewer_message"] = (
-                    f"{parsed.get('greeting', fallback['greeting'])} "
-                    f"{parsed.get('opening_question', fallback['opening_question'])}"
-                ).strip()
-            return {**fallback, **parsed}
-        except Exception as exc:
-            print(f"[AIInterviewer] start_interview fallback: {exc}")
-            return fallback
+        print("[AIInterviewer] start_interview requesting Gemini opening")
+        parsed = self.gemini._extract_json(self.gemini._call_gemini(prompt, max_output_tokens=900))
+
+        greeting = (parsed.get("greeting") or "").strip()
+        opening_question = (parsed.get("opening_question") or "").strip()
+        if not opening_question:
+            raise GeminiAnalysisError("AI analysis unavailable", "Missing opening_question from Gemini")
+
+        interviewer_message = (parsed.get("interviewer_message") or "").strip()
+        if not interviewer_message:
+            interviewer_message = f"{greeting} {opening_question}".strip()
+
+        print(f"[AIInterviewer] opening question length={len(opening_question)}")
+        return {
+            "greeting": greeting,
+            "opening_question": opening_question,
+            "interviewer_message": interviewer_message,
+            "analysis_available": True,
+        }
 
     def process_turn(
         self,
@@ -439,52 +424,16 @@ Return strict JSON:
         frustrated = self._detect_frustration(answer)
         discussed = self._extract_discussed_topics(turns, answer)
 
-        print(f"[AIInterviewer] turn={turn_number} discussed_topics={discussed}")
+        print(f"[AIInterviewer] turn={turn_number} transcript_length={len((answer or '').strip())}")
+        print(f"[AIInterviewer] discussed_topics={discussed}")
         print(f"[AIInterviewer] asked_questions={asked}")
         print(f"[AIInterviewer] skills={profile.get('skills_mentioned', [])}")
         if frustrated:
             print("[AIInterviewer] frustration detected in answer")
 
-        fallback = {
-            "communication_score": 72,
-            "technical_score": 70,
-            "confidence_score": 68,
-            "emotional_stability_score": emotion_metrics.get("emotional_stability_score", 70),
-            "nervousness_detected": bool(emotion_metrics.get("nervousness", False)),
-            "support_message": "",
-            "coaching_line": "Thank you for sharing that.",
-            "next_question": "",
-            "interviewer_message": "",
-            "should_continue": True,
-            "discussed_topics": discussed,
-            "skills_mentioned": profile.get("skills_mentioned", []),
-            "asked_questions": asked,
-        }
-
-        smart_default = self._smart_followup(profile, answer, turns, asked + [question], frustrated=frustrated)
-        fallback["next_question"] = smart_default
-
-        nervous = emotion_metrics.get("nervousness") or speech_metrics.get("filler_count", 0) > 4
-        lang = profile.get("language", "en")
-
-        if frustrated:
-            if lang == "hi":
-                fallback["coaching_line"] = "Aap bilkul sahi keh rahe hain, dhanyavaad."
-            elif lang == "hinglish":
-                fallback["coaching_line"] = "You're right, thank you for clarifying."
-            else:
-                fallback["coaching_line"] = "You're right, thank you for clarifying."
-        elif nervous:
-            if lang == "hi":
-                fallback["support_message"] = "Aaram se sochiye, aap achha kar rahe hain."
-            elif lang == "hinglish":
-                fallback["support_message"] = "Take your time, no worries — aap achha kar rahe ho."
-            else:
-                fallback["support_message"] = "Please relax and take your time. You are doing well."
-
-        fallback["interviewer_message"] = (
-            f"{fallback['support_message']} {fallback['coaching_line']} {fallback['next_question']}".strip()
-        )
+        transcript_error = validate_transcript(answer)
+        if transcript_error:
+            raise GeminiAnalysisError(transcript_error["message"])
 
         memory_block = f"""
 Conversation memory (use this — do NOT ignore):
@@ -523,49 +472,48 @@ FORBIDDEN for next_question (candidate already gave details):
         chat_messages = self._build_chat_messages(turns, question, answer)
         chat_messages.append({"role": "user", "content": json_instruction})
 
-        try:
-            parsed = self.gemini._extract_json(
-                self.gemini.call_gemini_chat(
-                    system_instruction=self._system_prompt(profile),
-                    messages=chat_messages,
-                    max_output_tokens=1200,
-                ),
-                fallback,
+        print("[AIInterviewer] requesting Gemini turn analysis")
+        parsed = self.gemini._extract_json(
+            self.gemini.call_gemini_chat(
+                system_instruction=self._system_prompt(profile),
+                messages=chat_messages,
+                max_output_tokens=1200,
             )
-            next_q = self._ensure_intelligent_question(
-                parsed.get("next_question", ""),
-                profile,
-                answer,
-                turns,
-                asked + [question],
-                frustrated=frustrated,
-            )
-            parsed["next_question"] = next_q
-            parsed["discussed_topics"] = discussed
-            parsed["skills_mentioned"] = profile.get("skills_mentioned", [])
-            parsed["asked_questions"] = asked + [question, next_q]
+        )
 
-            if frustrated and not parsed.get("coaching_line"):
-                parsed["coaching_line"] = fallback["coaching_line"]
+        scores = extract_valid_scores(parsed, list(TURN_SCORE_KEYS))
+        print(f"[AIInterviewer] Gemini turn scores={scores}")
 
-            if not parsed.get("interviewer_message"):
-                parts = [
-                    parsed.get("support_message", ""),
-                    parsed.get("coaching_line", ""),
-                    next_q,
-                ]
-                parsed["interviewer_message"] = " ".join(p for p in parts if p).strip()
+        next_q = self._ensure_intelligent_question(
+            parsed.get("next_question", ""),
+            profile,
+            answer,
+            turns,
+            asked + [question],
+            frustrated=frustrated,
+        )
+        if not next_q.strip():
+            raise GeminiAnalysisError("AI analysis unavailable", "Missing next_question from Gemini")
 
-            return {**fallback, **parsed}
-        except Exception as exc:
-            print(f"[AIInterviewer] process_turn fallback: {exc}")
-            fallback["next_question"] = self._ensure_intelligent_question(
-                fallback["next_question"],
-                profile,
-                answer,
-                turns,
-                asked + [question],
-                frustrated=frustrated,
-            )
-            fallback["discussed_topics"] = discussed
-            return fallback
+        coaching_line = (parsed.get("coaching_line") or "").strip()
+        if not coaching_line:
+            raise GeminiAnalysisError("AI analysis unavailable", "Missing coaching_line from Gemini")
+
+        support_message = (parsed.get("support_message") or "").strip()
+        interviewer_message = (parsed.get("interviewer_message") or "").strip()
+        if not interviewer_message:
+            interviewer_message = " ".join(p for p in [support_message, coaching_line, next_q] if p).strip()
+
+        return {
+            **scores,
+            "nervousness_detected": bool(parsed.get("nervousness_detected", emotion_metrics.get("nervousness", False))),
+            "support_message": support_message,
+            "coaching_line": coaching_line,
+            "next_question": next_q,
+            "interviewer_message": interviewer_message,
+            "should_continue": bool(parsed.get("should_continue", True)),
+            "discussed_topics": discussed,
+            "skills_mentioned": profile.get("skills_mentioned", []),
+            "asked_questions": asked + [question, next_q],
+            "analysis_available": True,
+        }

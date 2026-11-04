@@ -10,13 +10,14 @@ const InterviewScreen = ({ onEnd }) => {
   const [micEnabled, setMicEnabled] = useState(true);
   const [transcript, setTranscript] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [confidence, setConfidence] = useState(75);
-  const [clarity, setClarity] = useState(80);
-  const [fluency, setFluency] = useState(70);
+  const [confidence, setConfidence] = useState(0);
+  const [clarity, setClarity] = useState(0);
+  const [fluency, setFluency] = useState(0);
+  const [hasLiveMetrics, setHasLiveMetrics] = useState(false);
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [showSupportMessage, setShowSupportMessage] = useState(false);
   const [facialExpression, setFacialExpression] = useState('neutral');
-  const [eyeContact, setEyeContact] = useState(85);
+  const [eyeContact, setEyeContact] = useState(0);
   
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -223,9 +224,6 @@ const InterviewScreen = ({ onEnd }) => {
       setIsRecording(true);
       setTimeElapsed(0);
       
-      // Simulate real-time analysis
-      simulateAnalysis();
-      
       console.log('Recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
@@ -240,59 +238,16 @@ const InterviewScreen = ({ onEnd }) => {
     }
   };
 
-  const analyzeFacialExpression = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    
-    // Simple simulation of facial expression analysis
-    // In a real implementation, you would use face-api.js or similar library
-    const expressions = ['neutral', 'happy', 'confident', 'nervous', 'engaged'];
-    const randomExpression = expressions[Math.floor(Math.random() * expressions.length)];
-    setFacialExpression(randomExpression);
-    
-    // Simulate eye contact based on recording state
-    if (isRecording) {
-      setEyeContact(prev => {
-        const change = (Math.random() - 0.3) * 15;
-        return Math.max(0, Math.min(100, prev + change));
-      });
+  const analyzeTranscript = (text) => {
+    if (!text || !text.trim()) {
+      setConfidence(0);
+      setClarity(0);
+      setFluency(0);
+      setHasLiveMetrics(false);
+      return;
     }
-  };
-
-  const simulateAnalysis = () => {
-    // Simulate confidence changes
-    const confidenceInterval = setInterval(() => {
-      setConfidence(prev => {
-        const change = (Math.random() - 0.5) * 10;
-        return Math.max(0, Math.min(100, prev + change));
-      });
-    }, 2000);
-
-    // Simulate clarity changes
-    const clarityInterval = setInterval(() => {
-      setClarity(prev => {
-        const change = (Math.random() - 0.5) * 8;
-        return Math.max(0, Math.min(100, prev + change));
-      });
-    }, 3000);
-
-    // Analyze facial expression periodically
-    const expressionInterval = setInterval(() => {
-      analyzeFacialExpression();
-    }, 4000);
-
-    // Show support message randomly
-    setTimeout(() => {
-      if (Math.random() > 0.7) {
-        setShowSupportMessage(true);
-        setTimeout(() => setShowSupportMessage(false), 3000);
-      }
-    }, 8000);
-
-    setTimeout(() => {
-      clearInterval(confidenceInterval);
-      clearInterval(clarityInterval);
-      clearInterval(expressionInterval);
-    }, 30000);
+    console.log('[InterviewScreen] transcript length=', text.trim().length);
+    setHasLiveMetrics(false);
   };
 
   const transcribeAudio = async (audioBlob) => {
@@ -321,21 +276,6 @@ const InterviewScreen = ({ onEnd }) => {
     }
   };
 
-  const analyzeTranscript = (text) => {
-    // Simple analysis for filler words
-    const fillerWords = ['um', 'uh', 'hmm', 'like', 'you know'];
-    const words = text.toLowerCase().split(' ');
-    const fillerCount = words.filter(word => fillerWords.includes(word)).length;
-    
-    // Update fluency based on filler words
-    const fluencyScore = Math.max(0, 100 - (fillerCount * 10));
-    setFluency(fluencyScore);
-    
-    // Update clarity based on length and structure
-    const clarityScore = text.length > 50 ? 85 : 60;
-    setClarity(clarityScore);
-  };
-
   const nextQuestion = () => {
     if (currentQuestionIndex < questions.length - 1) {
       const nextIndex = currentQuestionIndex + 1;
@@ -343,18 +283,11 @@ const InterviewScreen = ({ onEnd }) => {
       setTranscript('');
       setTimeElapsed(0);
       
-      // Speak the next question after a short delay
       setTimeout(() => {
         speakQuestion(questions[nextIndex]);
       }, 1000);
     } else {
-      onEnd({
-        confidence,
-        clarity,
-        fluency,
-        questions: questions.slice(0, currentQuestionIndex + 1),
-        transcripts: [transcript]
-      });
+      onEnd(null);
     }
   };
 

@@ -737,6 +737,32 @@ body {
 
 .modal-footer-text a:hover { text-decoration: underline; }
 
+.auth-forgot-password {
+  text-align: right;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.auth-forgot-password a {
+  color: var(--accent-blue);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.auth-forgot-password a:hover {
+  color: var(--accent-blue-hover);
+  text-decoration: underline;
+}
+
+.auth-success {
+  color: #10b981;
+  font-size: 0.875rem;
+  margin: 0.5rem 0;
+  text-align: center;
+}
+
 /* Language modal */
 .language-options { display: flex; flex-direction: column; gap: 0.5rem; margin: 1rem 0 1.25rem; }
 

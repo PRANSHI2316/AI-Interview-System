@@ -17,15 +17,19 @@
             const sessionId = params.get("session_id");
             const overlay = document.getElementById("feedbackOverlay");
             if (!sessionId) {
-                overlay.innerHTML = "<div class='feedback-generating'><p>No session found.</p></div>";
+                FeedbackDashboard.renderUnavailable(overlay, "No interview data available", "Start and complete an interview to receive scores.");
                 return;
             }
 
             FeedbackDashboard.showGenerating(overlay);
             const res = await fetch(`/api/interview/${encodeURIComponent(sessionId)}/summary`);
             const data = await res.json();
-            if (!data.success) {
-                overlay.innerHTML = "<div class='feedback-generating'><p>Report not found.</p></div>";
+            if (!data.success || !FeedbackDashboard.hasRealScores(data.summary)) {
+                FeedbackDashboard.renderUnavailable(
+                    overlay,
+                    data.message || "No interview data available",
+                    data.error || "Complete an interview with a valid transcript to receive Gemini-generated scores."
+                );
                 return;
             }
             data.summary.session_id = sessionId;

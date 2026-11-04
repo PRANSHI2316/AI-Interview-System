@@ -3,12 +3,13 @@ window.EmotionDetection = (function () {
     let intervalId = null;
     let videoEl = null;
     let liveEmotion = {
-        eye_contact_score: 70,
-        smile_score: 50,
-        stress_score: 35,
-        confidence_signal: 65,
+        eye_contact_score: 0,
+        smile_score: 0,
+        stress_score: 0,
+        confidence_signal: 0,
         nervousness: false,
-        emotional_stability_score: 70,
+        emotional_stability_score: 0,
+        metrics_available: false,
     };
 
     function getMetrics() {
@@ -41,10 +42,11 @@ window.EmotionDetection = (function () {
         const stressLabel = document.getElementById("stress-meter-value");
 
         const conf = Math.round(liveEmotion.confidence_signal || 0);
-        if (confidenceBar) confidenceBar.style.width = `${conf}%`;
-        if (confidenceLabel) confidenceLabel.textContent = `${conf}%`;
-        if (eyeLabel) eyeLabel.textContent = `${Math.round(liveEmotion.eye_contact_score || 0)}%`;
-        if (stressLabel) stressLabel.textContent = `${Math.round(liveEmotion.stress_score || 0)}%`;
+        const hasMetrics = liveEmotion.metrics_available;
+        if (confidenceBar) confidenceBar.style.width = hasMetrics ? `${conf}%` : "0%";
+        if (confidenceLabel) confidenceLabel.textContent = hasMetrics ? `${conf}%` : "—";
+        if (eyeLabel) eyeLabel.textContent = hasMetrics ? `${Math.round(liveEmotion.eye_contact_score || 0)}%` : "—";
+        if (stressLabel) stressLabel.textContent = hasMetrics ? `${Math.round(liveEmotion.stress_score || 0)}%` : "—";
     }
 
     function start(video, { onNervous } = {}) {
@@ -67,12 +69,13 @@ window.EmotionDetection = (function () {
                 const confidenceSignal = Math.round(Math.min(100, neutral * 55 + happy * 45));
 
                 liveEmotion = {
-                    eye_contact_score: Math.max(40, confidenceSignal),
+                    eye_contact_score: Math.max(0, confidenceSignal),
                     smile_score: smile,
                     stress_score: stress,
                     confidence_signal: confidenceSignal,
                     nervousness: stress > 60 || confidenceSignal < 45,
                     emotional_stability_score: Math.round(Math.max(0, Math.min(100, (100 - stress) * 0.65 + confidenceSignal * 0.35))),
+                    metrics_available: true,
                 };
 
                 updateMeterUI();

@@ -461,7 +461,13 @@ async function generateAndShowFeedback() {
         }
     } catch (error) {
         console.error("[Interview] feedback generation failed:", error);
-        if (overlay) {
+        if (window.FeedbackDashboard && overlay) {
+            FeedbackDashboard.renderUnavailable(
+                overlay,
+                error.message || "AI analysis unavailable",
+                "Scores are only shown after successful Gemini analysis."
+            );
+        } else if (overlay) {
             overlay.innerHTML = `
                 <div class="feedback-generating">
                     <h2 style="color:#fff">Could not generate report</h2>
@@ -799,15 +805,10 @@ async function handleAnswerComplete(answer, speechMetrics) {
     } catch (error) {
         isSubmittingAnswer = false;
         console.error("[Interview] turn failed:", error);
-        AIService.setSpeakingStatus("AI analysis failed — retrying…", "speaking-user");
-        setTimeout(
-            () =>
-                AIService.speakAndThenListen(
-                    "Thank you. What was the most challenging technical part of your recent project?",
-                    () => startListening()
-                ),
-            900
-        );
+        const msg = error.message || "AI analysis unavailable";
+        AIService.setSpeakingStatus(msg, "speaking-user");
+        AIService.addChatBubble("ai", `${msg}. Please try answering again when the AI service is available.`);
+        setTimeout(() => startListening({ resume: true }), 1200);
     }
 }
 
@@ -828,8 +829,13 @@ async function finalizeInterview() {
         }
     } catch (error) {
         console.error("[Interview] finalize failed:", error);
-        showError(`Unable to generate final feedback: ${error.message}`);
-        window.location.href = `/feedback?session_id=${encodeURIComponent(sessionId || "")}`;
+        const msg = error.message || "AI analysis unavailable";
+        if (window.FeedbackDashboard && overlay) {
+            FeedbackDashboard.renderUnavailable(overlay, msg, "Scores are only shown after successful Gemini analysis.");
+        } else {
+            showError(`Unable to generate final feedback: ${msg}`);
+            window.location.href = `/feedback?session_id=${encodeURIComponent(sessionId || "")}`;
+        }
     }
 }
 

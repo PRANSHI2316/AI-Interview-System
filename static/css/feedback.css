@@ -18,6 +18,32 @@
     to { opacity: 1; }
 }
 
+.feedback-warning {
+    text-align: center;
+    padding: 2rem 1rem;
+}
+
+.feedback-warning h1 {
+    color: #fbbf24;
+    font-size: 1.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.feedback-warning p {
+    color: #cbd5e1;
+    max-width: 640px;
+    margin: 0 auto 1.5rem;
+}
+
+.feedback-grid--disabled .score-bar-row--disabled .score-bar-row__fill,
+.overall-ring--disabled circle:last-of-type {
+    opacity: 0.35;
+}
+
+.score-bar-row--disabled .score-bar-row__head span:last-child {
+    color: #94a3b8;
+}
+
 .feedback-shell {
     max-width: 1100px;
     margin: 0 auto 2rem;

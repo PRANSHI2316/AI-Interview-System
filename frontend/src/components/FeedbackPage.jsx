@@ -3,11 +3,15 @@ import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, TrendingUp, Award, RefreshCw, Download, Brain } from 'lucide-react';
 
 const FeedbackPage = ({ feedback, onRestart }) => {
-  if (!feedback) {
+  if (!feedback || feedback.analysis_available === false) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="glass rounded-3xl p-12 text-center">
-          <h2 className="text-2xl text-white mb-4">Interview Completed</h2>
+        <div className="glass rounded-3xl p-12 text-center max-w-xl">
+          <h2 className="text-2xl text-white mb-4">No interview data available</h2>
+          <p className="text-gray-300 mb-6">
+            Scores are only shown after a completed interview with Gemini AI analysis.
+            No fabricated results are displayed.
+          </p>
           <button
             onClick={onRestart}
             className="bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 px-6 rounded-full hover:from-purple-600 hover:to-pink-600 transition-all"
@@ -19,7 +23,7 @@ const FeedbackPage = ({ feedback, onRestart }) => {
     );
   }
 
-  const { confidence, clarity, fluency } = feedback;
+  const { confidence = 0, clarity = 0, fluency = 0 } = feedback;
   
   const overallScore = Math.round((confidence + clarity + fluency) / 3);
   

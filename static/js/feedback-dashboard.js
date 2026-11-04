@@ -1,14 +1,23 @@
-/** Renders professional AI interview feedback dashboard */
+/** Renders professional AI interview feedback dashboard — real Gemini scores only */
 window.FeedbackDashboard = (function () {
     function clampScore(value) {
         return Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
     }
 
-    function scoreBar(label, value) {
-        const v = clampScore(value);
+    function hasRealScores(summary) {
+        if (!summary) return false;
+        if (summary.analysis_available === false) return false;
+        if (summary.scores === null) return false;
+        return summary.analysis_available === true || summary.overall_score != null;
+    }
+
+    function scoreBar(label, value, disabled) {
+        const v = disabled ? 0 : clampScore(value);
+        const display = disabled ? "0%" : `${v}%`;
+        const extraClass = disabled ? " score-bar-row--disabled" : "";
         return `
-            <div class="score-bar-row">
-                <div class="score-bar-row__head"><span>${label}</span><span>${v}%</span></div>
+            <div class="score-bar-row${extraClass}">
+                <div class="score-bar-row__head"><span>${label}</span><span>${display}</span></div>
                 <div class="score-bar-row__track">
                     <div class="score-bar-row__fill" data-score="${v}" style="width:0"></div>
                 </div>
@@ -16,13 +25,14 @@ window.FeedbackDashboard = (function () {
         `;
     }
 
-    function overallRing(value) {
-        const v = clampScore(value);
+    function overallRing(value, disabled) {
+        const v = disabled ? 0 : clampScore(value);
         const radius = 70;
         const circumference = 2 * Math.PI * radius;
         const offset = circumference - (v / 100) * circumference;
+        const display = disabled ? "0%" : `${v}%`;
         return `
-            <div class="overall-ring">
+            <div class="overall-ring${disabled ? " overall-ring--disabled" : ""}">
                 <svg viewBox="0 0 160 160" aria-hidden="true">
                     <circle cx="80" cy="80" r="${radius}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="12"/>
                     <circle cx="80" cy="80" r="${radius}" fill="none" stroke="url(#ringGrad)" stroke-width="12"
@@ -35,22 +45,25 @@ window.FeedbackDashboard = (function () {
                     </defs>
                 </svg>
                 <div class="overall-ring__label">
-                    <span class="overall-ring__value">${v}%</span>
+                    <span class="overall-ring__value">${display}</span>
                     <span class="overall-ring__text">Overall</span>
                 </div>
             </div>
         `;
     }
 
-    function renderList(items, fallback, className) {
-        const list = Array.isArray(items) && items.length ? items : fallback;
+    function renderList(items, className, emptyMessage) {
+        const list = Array.isArray(items) ? items.filter(Boolean) : [];
+        if (!list.length) {
+            return `<p class="feedback-narrative">${emptyMessage}</p>`;
+        }
         return `<ul class="feedback-list ${className}">${list.map((i) => `<li>${i}</li>`).join("")}</ul>`;
     }
 
     function renderCorrections(items) {
         const list = Array.isArray(items) ? items : [];
         if (!list.length) {
-            return `<p class="feedback-narrative">No major grammar issues detected. Keep practicing polished phrasing.</p>`;
+            return `<p class="feedback-narrative">No grammar corrections were generated for this session.</p>`;
         }
         return list
             .map(
@@ -87,7 +100,8 @@ window.FeedbackDashboard = (function () {
             .join("");
     }
 
-    function animateBars(root) {
+    function animateBars(root, disabled) {
+        if (disabled) return;
         requestAnimationFrame(() => {
             root.querySelectorAll(".score-bar-row__fill").forEach((el) => {
                 el.style.width = `${el.dataset.score || 0}%`;
@@ -115,13 +129,47 @@ window.FeedbackDashboard = (function () {
         window.speechSynthesis.speak(utterance);
     }
 
+    function renderUnavailable(container, message, detail) {
+        if (!container) return;
+        container.classList.remove("is-hidden");
+        container.innerHTML = `
+            <div class="feedback-shell">
+                <div class="feedback-warning">
+                    <h1><i class="fas fa-exclamation-triangle"></i> ${message || "No interview data available"}</h1>
+                    <p>${detail || "Complete an interview with a valid transcript to receive AI-generated scores."}</p>
+                    <div class="feedback-grid feedback-grid--scores feedback-grid--disabled">
+                        <div class="feedback-card">${overallRing(0, true)}</div>
+                        <div class="feedback-card">
+                            <h2>Performance Scores</h2>
+                            ${scoreBar("Communication", 0, true)}
+                            ${scoreBar("Confidence", 0, true)}
+                            ${scoreBar("Technical Knowledge", 0, true)}
+                        </div>
+                    </div>
+                    <div class="feedback-actions">
+                        <button type="button" class="feedback-btn feedback-btn--primary" onclick="window.location.href='/landing'">Practice Again</button>
+                        <button type="button" class="feedback-btn feedback-btn--secondary" onclick="window.location.href='/device-setup'">Back to Device Setup</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        console.warn("[FeedbackDashboard] unavailable:", message, detail || "");
+    }
+
     function render(container, summary) {
-        if (!container || !summary) return;
+        if (!container) return;
+
+        if (!hasRealScores(summary)) {
+            renderUnavailable(container, "No interview data available", summary?.message);
+            return;
+        }
 
         const name = summary.candidate_name || "Candidate";
         const date = summary.generated_at
             ? new Date(summary.generated_at).toLocaleString()
             : new Date().toLocaleString();
+
+        console.log("[FeedbackDashboard] rendering real scores overall=", summary.overall_score);
 
         container.innerHTML = `
             <div class="feedback-shell">
@@ -131,18 +179,18 @@ window.FeedbackDashboard = (function () {
                 </div>
 
                 <div class="feedback-grid feedback-grid--scores">
-                    <div class="feedback-card">${overallRing(summary.overall_score)}</div>
+                    <div class="feedback-card">${overallRing(summary.overall_score, false)}</div>
                     <div class="feedback-card">
                         <h2><i class="fas fa-chart-line"></i> Performance Scores</h2>
-                        ${scoreBar("Communication", summary.communication_score)}
-                        ${scoreBar("Confidence", summary.confidence_score)}
-                        ${scoreBar("Technical Knowledge", summary.technical_score)}
-                        ${scoreBar("Speaking Fluency", summary.fluency_score)}
-                        ${scoreBar("Clarity", summary.clarity_score)}
-                        ${scoreBar("Grammar", summary.grammar_score)}
-                        ${scoreBar("Introduction Quality", summary.introduction_quality_score)}
-                        ${scoreBar("Eye Contact / Presence", summary.eye_contact_score)}
-                        ${scoreBar("Vocabulary", summary.vocabulary_score)}
+                        ${scoreBar("Communication", summary.communication_score, false)}
+                        ${scoreBar("Confidence", summary.confidence_score, false)}
+                        ${scoreBar("Technical Knowledge", summary.technical_score, false)}
+                        ${scoreBar("Speaking Fluency", summary.fluency_score, false)}
+                        ${scoreBar("Clarity", summary.clarity_score, false)}
+                        ${scoreBar("Grammar", summary.grammar_score, false)}
+                        ${scoreBar("Introduction Quality", summary.introduction_quality_score, false)}
+                        ${scoreBar("Eye Contact / Presence", summary.eye_contact_score, false)}
+                        ${scoreBar("Vocabulary", summary.vocabulary_score, false)}
                     </div>
                 </div>
 
@@ -154,17 +202,17 @@ window.FeedbackDashboard = (function () {
                 <div class="feedback-grid feedback-grid--two" style="margin-top:1rem">
                     <div class="feedback-card">
                         <h2><i class="fas fa-check-circle"></i> Strengths</h2>
-                        ${renderList(summary.strengths, ["Shows willingness to participate"], "feedback-list--strengths")}
+                        ${renderList(summary.strengths, "feedback-list--strengths", "No strengths were identified for this session.")}
                     </div>
                     <div class="feedback-card">
                         <h2><i class="fas fa-exclamation-triangle"></i> Areas to Improve</h2>
-                        ${renderList(summary.weaknesses, ["Continue improving answer structure"], "feedback-list--improve")}
+                        ${renderList(summary.weaknesses, "feedback-list--improve", "No improvement areas were identified for this session.")}
                     </div>
                 </div>
 
                 <div class="feedback-card" style="margin-top:1rem">
                     <h2><i class="fas fa-lightbulb"></i> Personalized Suggestions</h2>
-                    ${renderList(summary.improvement_suggestions, ["Practice mock interviews weekly"], "feedback-list--tips")}
+                    ${renderList(summary.improvement_suggestions, "feedback-list--tips", "No suggestions were generated for this session.")}
                 </div>
 
                 <div class="feedback-card" style="margin-top:1rem">
@@ -185,7 +233,7 @@ window.FeedbackDashboard = (function () {
             </div>
         `;
 
-        animateBars(container);
+        animateBars(container, false);
         document.getElementById("feedback-practice-again")?.addEventListener("click", () => {
             window.location.href = "/landing";
         });
@@ -194,7 +242,7 @@ window.FeedbackDashboard = (function () {
         });
 
         speakFeedback(summary.spoken_feedback);
-        console.log("[FeedbackDashboard] report rendered");
+        console.log("[FeedbackDashboard] report rendered from Gemini analysis");
     }
 
     function showGenerating(container) {
@@ -204,7 +252,7 @@ window.FeedbackDashboard = (function () {
             <div class="feedback-generating">
                 <div class="feedback-spinner"></div>
                 <h2 style="color:#fff;margin:0 0 .5rem">Generating your AI interview report…</h2>
-                <p>Analyzing communication, confidence, grammar, and technical responses.</p>
+                <p>Analyzing transcript with Gemini. No scores are shown until analysis completes.</p>
             </div>
         `;
     }
@@ -213,5 +261,5 @@ window.FeedbackDashboard = (function () {
         container?.classList.add("is-hidden");
     }
 
-    return { render, showGenerating, hide, speakFeedback };
+    return { render, renderUnavailable, showGenerating, hide, speakFeedback, hasRealScores };
 })();
