@@ -13,3 +13,4 @@ services:
       - ./backend/.env
     volumes:
       - ./database:/app/database
+

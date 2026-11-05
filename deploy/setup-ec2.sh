@@ -99,3 +99,4 @@ echo "3. To enable HTTPS (REQUIRED for webcam & microphone permissions):"
 echo "   - Point your domain or use a free nip.io domain (e.g. YOUR_EC2_IP.nip.io)"
 echo "   - Run: sudo certbot --nginx -d YOUR_DOMAIN"
 echo "=========================================================="
+
